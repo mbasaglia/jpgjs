@@ -24,6 +24,13 @@
 //   in PostScript Level 2, Technical Note #5116
 //   (partners.adobe.com/public/developer/en/ps/sdk/5116.DCT_Filter.pdf)
 
+const ColorSpace = {
+	Unkown:   0,
+	Grayscale:1,
+	AdobeRGB: 2,
+	RGB:      3,
+	CYMK:     4
+};
 var JpegImage = (function jpegImage() {
   "use strict";
   var dctZigZag = new Int32Array([
@@ -786,6 +793,23 @@ var JpegImage = (function jpegImage() {
       this.jfif = jfif;
       this.adobe = adobe;
       this.components = [];
+      switch ( frame.components.length )
+	  {
+		  case 1:
+			  this.colorspace = ColorSpace.Grayscale; 
+			  break;
+		  case 3:
+			  if ( this.adobe )
+				  this.colorspace = ColorSpace.AdobeRGB;
+			  else
+				  this.colorspace = ColorSpace.RGB; 
+			  break;
+		  case 4: 
+			  this.colorspace = ColorSpace.CYMK; 
+			  break;
+		  default:
+			  this.colorspace = ColorSpace.Unknown;
+	  }
       for (var i = 0; i < frame.components.length; i++) {
         var component = frame.components[i];
         if ( ! component.quantizationTable && component.quantizationTableId != null )
