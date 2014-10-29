@@ -515,8 +515,10 @@ var JpegImage = (function jpegImage() {
     // convert to 8-bit integers
     for (i = 0; i < 64; ++i) {
       var index = blockBufferOffset + i;
-      var q = Math.floor(p[i]*component.bitConversion);
-      q = (q <= -2056) ? 0 : (q >= 2024) ? 255 : (q + 2056) >> 4;
+      var q = p[i];
+      q = (q <= -2056/component.bitConversion) ? 0 : 
+        (q >= 2024/component.bitConversion) ? 255/component.bitConversion : 
+        (q + 2056/component.bitConversion) >> 4;
       component.blockData[index] = q;
     }
   }
@@ -819,11 +821,72 @@ var JpegImage = (function jpegImage() {
           scaleX: component.h / frame.maxH,
           scaleY: component.v / frame.maxV,
           blocksPerLine: component.blocksPerLine,
-          blocksPerColumn: component.blocksPerColumn
+          blocksPerColumn: component.blocksPerColumn,
+		  bitConversion: component.bitConversion
         });
       }
     },
+	getData16: function getData16(width, height) {
+		if ( this.components.length != 1 )
+			throw 'Unsupported color mode';
+		var scaleX = this.width / width, scaleY = this.height / height;
+		
+		var component, componentScaleX, componentScaleY;
+		var x, y, i;
+		var offset = 0;
+		var numComponents = this.components.length;
+		var dataLength = width * height * numComponents;
+		var data = new Uint16Array(dataLength);
+		var componentLine;
 
+		// lineData is reused for all components. Assume first component is
+		// the biggest
+		var lineData = new Uint16Array((this.components[0].blocksPerLine << 3) *
+									this.components[0].blocksPerColumn * 8);
+
+		// First construct image data ...
+		for (i = 0; i < numComponents; i++) {
+			component = this.components[i];
+			var blocksPerLine = component.blocksPerLine;
+			var blocksPerColumn = component.blocksPerColumn;
+			var samplesPerLine = blocksPerLine << 3;
+
+			var j, k, ll = 0;
+			var lineOffset = 0;
+			for (var blockRow = 0; blockRow < blocksPerColumn; blockRow++) {
+				var scanLine = blockRow << 3;
+				for (var blockCol = 0; blockCol < blocksPerLine; blockCol++) {
+					var bufferOffset = getBlockBufferOffset(component, blockRow, blockCol);
+					var offset = 0, sample = blockCol << 3;
+					for (j = 0; j < 8; j++) {
+						var lineOffset = (scanLine + j) * samplesPerLine;
+						for (k = 0; k < 8; k++) {
+							lineData[lineOffset + sample + k] =
+							component.output[bufferOffset + offset++];
+						}
+					}
+				}
+			}
+
+			componentScaleX = component.scaleX * scaleX;
+			componentScaleY = component.scaleY * scaleY;
+			offset = i;
+
+			var cx, cy;
+			var index;
+			for (y = 0; y < height; y++) {
+				for (x = 0; x < width; x++) {
+					cy = 0 | (y * componentScaleY);
+					cx = 0 | (x * componentScaleX);
+					index = cy * samplesPerLine + cx;
+					data[offset] = lineData[index];
+					offset += numComponents;
+				}
+			}
+		}
+		return data;
+	},
+	
     getData: function getData(width, height) {
       var scaleX = this.width / width, scaleY = this.height / height;
 
@@ -860,7 +923,7 @@ var JpegImage = (function jpegImage() {
               var lineOffset = (scanLine + j) * samplesPerLine;
               for (k = 0; k < 8; k++) {
                 lineData[lineOffset + sample + k] =
-                  component.output[bufferOffset + offset++];
+                  component.output[bufferOffset + offset++]*component.bitConversion;
               }
             }
           }
